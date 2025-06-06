@@ -1,88 +1,24 @@
 """
-会话服务实现
+会话服务实现 - 业务逻辑层
 """
 import uuid
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from dataclasses import dataclass
 
-from adapters.base import ChatMessage, MessageRole
-
-
-@dataclass
-class Session:
-    """会话数据结构"""
-    id: str
-    user_id: str
-    title: str
-    ai_provider: str
-    model: str
-    created_at: datetime
-    updated_at: datetime
-    is_active: bool = True
-    metadata: Optional[Dict[str, Any]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return {
-            'id': self.id,
-            'user_id': self.user_id,
-            'title': self.title,
-            'ai_provider': self.ai_provider,
-            'model': self.model,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'is_active': self.is_active,
-            'metadata': self.metadata or {}
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Session':
-        """从字典创建实例"""
-        return cls(
-            id=data['id'],
-            user_id=data['user_id'],
-            title=data['title'],
-            ai_provider=data['ai_provider'],
-            model=data['model'],
-            created_at=datetime.fromisoformat(data['created_at']),
-            updated_at=datetime.fromisoformat(data['updated_at']),
-            is_active=data.get('is_active', True),
-            metadata=data.get('metadata')
-        )
-
-
-@dataclass
-class SessionConfig:
-    """会话配置"""
-    ai_provider: str
-    model: str
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-    system_prompt: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return {
-            'ai_provider': self.ai_provider,
-            'model': self.model,
-            'temperature': self.temperature,
-            'max_tokens': self.max_tokens,
-            'system_prompt': self.system_prompt,
-            'metadata': self.metadata or {}
-        }
+from models.chat_model import ChatMessage, MessageRole
+from models.session_model import Session, SessionConfig
 
 
 class SessionService:
-    """会话服务"""
+    """会话服务 - 处理会话相关的业务逻辑"""
     
-    def __init__(self, session_repository, message_repository, cache_service=None):
-        self.session_repo = session_repository
-        self.message_repo = message_repository
+    def __init__(self, cache_service=None):
         self.cache = cache_service
         self.logger = logging.getLogger(__name__)
+        # 简化实现：使用内存存储，实际项目中应该使用数据库
+        self._sessions: Dict[str, Session] = {}
+        self._messages: Dict[str, List[ChatMessage]] = {}
     
     async def create_session(self, user_id: str, config: SessionConfig, title: str = None) -> Session:
         """创建新会话"""
@@ -95,7 +31,7 @@ class SessionService:
                 title = f"Chat with {config.model}"
             
             # 创建会话对象
-            now = datetime.utcnow()
+            now = datetime.now()
             session = Session(
                 id=session_id,
                 user_id=user_id,
@@ -108,8 +44,9 @@ class SessionService:
                 metadata=config.metadata
             )
             
-            # 保存到数据库
-            await self.session_repo.create(session.to_dict())
+            # 保存到内存（实际项目中应该保存到数据库）
+            self._sessions[session_id] = session
+            self._messages[session_id] = []
             
             # 如果有系统提示，添加系统消息
             if config.system_prompt:
@@ -119,13 +56,6 @@ class SessionService:
                     timestamp=now
                 )
                 await self.add_message(session_id, system_message)
-            
-            # 保存会话配置
-            await self._save_session_config(session_id, config)
-            
-            # 清除用户会话列表缓存
-            if self.cache:
-                await self.cache.delete(f"user_sessions:{user_id}")
             
             self.logger.info(f"Created session {session_id} for user {user_id}")
             return session
@@ -137,29 +67,13 @@ class SessionService:
     async def get_session(self, session_id: str, user_id: str) -> Optional[Session]:
         """获取会话"""
         try:
-            # 先从缓存获取
-            if self.cache:
-                cached_data = await self.cache.get(f"session:{session_id}")
-                if cached_data:
-                    session = Session.from_dict(cached_data)
-                    # 验证用户权限
-                    if session.user_id == user_id:
-                        return session
-            
-            # 从数据库获取
-            session_data = await self.session_repo.get_by_id(session_id)
-            if not session_data:
+            session = self._sessions.get(session_id)
+            if not session:
                 return None
-            
-            session = Session.from_dict(session_data)
             
             # 验证用户权限
             if session.user_id != user_id:
                 return None
-            
-            # 缓存会话数据
-            if self.cache:
-                await self.cache.set(f"session:{session_id}", session.to_dict(), ttl=1800)
             
             return session
         
@@ -170,32 +84,17 @@ class SessionService:
     async def list_sessions(self, user_id: str, limit: int = 20, offset: int = 0) -> List[Session]:
         """获取用户会话列表"""
         try:
-            # 先从缓存获取
-            cache_key = f"user_sessions:{user_id}:{limit}:{offset}"
-            if self.cache:
-                cached_data = await self.cache.get(cache_key)
-                if cached_data:
-                    return [Session.from_dict(data) for data in cached_data]
+            # 过滤用户的会话
+            user_sessions = [
+                session for session in self._sessions.values()
+                if session.user_id == user_id and session.is_active
+            ]
             
-            # 从数据库获取
-            filters = {
-                'user_id': user_id,
-                'is_active': True
-            }
-            sessions_data = await self.session_repo.list(
-                filters=filters,
-                limit=limit,
-                offset=offset,
-                order_by='updated_at DESC'
-            )
+            # 按更新时间排序
+            user_sessions.sort(key=lambda x: x.updated_at, reverse=True)
             
-            sessions = [Session.from_dict(data) for data in sessions_data]
-            
-            # 缓存结果
-            if self.cache:
-                await self.cache.set(cache_key, [s.to_dict() for s in sessions], ttl=600)
-            
-            return sessions
+            # 分页
+            return user_sessions[offset:offset + limit]
         
         except Exception as e:
             self.logger.error(f"Failed to list sessions for user {user_id}: {str(e)}")
@@ -209,21 +108,17 @@ class SessionService:
             if not session:
                 return False
             
+            # 更新字段
+            if 'title' in kwargs:
+                session.title = kwargs['title']
+            if 'metadata' in kwargs:
+                session.metadata = kwargs['metadata']
+            
             # 更新时间
-            kwargs['updated_at'] = datetime.utcnow()
+            session.updated_at = datetime.now()
             
-            # 更新数据库
-            success = await self.session_repo.update(session_id, kwargs)
-            
-            if success:
-                # 清除相关缓存
-                if self.cache:
-                    await self.cache.delete(f"session:{session_id}")
-                    await self.cache.delete(f"user_sessions:{user_id}")
-                
-                self.logger.info(f"Updated session {session_id}")
-            
-            return success
+            self.logger.info(f"Updated session {session_id}")
+            return True
         
         except Exception as e:
             self.logger.error(f"Failed to update session {session_id}: {str(e)}")
@@ -238,20 +133,11 @@ class SessionService:
                 return False
             
             # 软删除
-            success = await self.session_repo.update(session_id, {
-                'is_active': False,
-                'updated_at': datetime.utcnow()
-            })
+            session.is_active = False
+            session.updated_at = datetime.now()
             
-            if success:
-                # 清除相关缓存
-                if self.cache:
-                    await self.cache.delete(f"session:{session_id}")
-                    await self.cache.delete(f"user_sessions:{user_id}")
-                
-                self.logger.info(f"Deleted session {session_id}")
-            
-            return success
+            self.logger.info(f"Deleted session {session_id}")
+            return True
         
         except Exception as e:
             self.logger.error(f"Failed to delete session {session_id}: {str(e)}")
@@ -260,31 +146,19 @@ class SessionService:
     async def add_message(self, session_id: str, message: ChatMessage) -> bool:
         """添加消息到会话"""
         try:
-            # 获取下一个序列号
-            sequence_number = await self._get_next_sequence_number(session_id)
+            # 确保会话存在
+            if session_id not in self._sessions:
+                raise ValueError(f"Session {session_id} not found")
             
-            # 准备消息数据
-            message_data = {
-                'id': f"msg_{uuid.uuid4().hex[:12]}",
-                'session_id': session_id,
-                'role': message.role.value,
-                'content': message.content,
-                'created_at': message.timestamp or datetime.utcnow(),
-                'metadata': message.metadata or {},
-                'sequence_number': sequence_number
-            }
+            # 添加消息
+            if session_id not in self._messages:
+                self._messages[session_id] = []
             
-            # 保存消息
-            await self.message_repo.create(message_data)
+            self._messages[session_id].append(message)
             
             # 更新会话的更新时间
-            await self.session_repo.update(session_id, {
-                'updated_at': datetime.utcnow()
-            })
-            
-            # 清除消息缓存
-            if self.cache:
-                await self.cache.delete(f"session_messages:{session_id}")
+            session = self._sessions[session_id]
+            session.updated_at = datetime.now()
             
             return True
         
@@ -295,64 +169,11 @@ class SessionService:
     async def get_messages(self, session_id: str, limit: int = 50, offset: int = 0) -> List[ChatMessage]:
         """获取会话消息"""
         try:
-            # 先从缓存获取
-            cache_key = f"session_messages:{session_id}:{limit}:{offset}"
-            if self.cache:
-                cached_data = await self.cache.get(cache_key)
-                if cached_data:
-                    return [ChatMessage.from_dict(data) for data in cached_data]
+            messages = self._messages.get(session_id, [])
             
-            # 从数据库获取
-            filters = {'session_id': session_id}
-            messages_data = await self.message_repo.list(
-                filters=filters,
-                limit=limit,
-                offset=offset,
-                order_by='sequence_number ASC'
-            )
-            
-            messages = []
-            for data in messages_data:
-                message = ChatMessage(
-                    role=MessageRole(data['role']),
-                    content=data['content'],
-                    timestamp=data['created_at'],
-                    metadata=data.get('metadata', {})
-                )
-                messages.append(message)
-            
-            # 缓存结果
-            if self.cache:
-                await self.cache.set(cache_key, [m.to_dict() for m in messages], ttl=600)
-            
-            return messages
+            # 分页
+            return messages[offset:offset + limit]
         
         except Exception as e:
             self.logger.error(f"Failed to get messages for session {session_id}: {str(e)}")
             raise
-    
-    async def _get_next_sequence_number(self, session_id: str) -> int:
-        """获取下一个序列号"""
-        try:
-            # 获取当前最大序列号
-            filters = {'session_id': session_id}
-            messages = await self.message_repo.list(
-                filters=filters,
-                limit=1,
-                order_by='sequence_number DESC'
-            )
-            
-            if messages:
-                return messages[0]['sequence_number'] + 1
-            else:
-                return 1
-        
-        except Exception as e:
-            self.logger.error(f"Failed to get next sequence number for session {session_id}: {str(e)}")
-            return 1
-    
-    async def _save_session_config(self, session_id: str, config: SessionConfig) -> None:
-        """保存会话配置"""
-        # 这里可以保存到session_configs表或者session的metadata字段
-        # 简化实现，保存到session的metadata中
-        pass
