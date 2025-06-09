@@ -4,7 +4,7 @@
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 
@@ -41,7 +41,8 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0, description="温度参数")
     max_tokens: Optional[int] = Field(default=None, ge=1, le=8000, description="最大token数")
     
-    @validator('message')
+    @field_validator('message')
+    @classmethod
     def validate_message(cls, v):
         if not v.strip():
             raise ValueError('消息内容不能为空')

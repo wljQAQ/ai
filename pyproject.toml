@@ -34,6 +34,7 @@ dependencies = [
     "tenacity>=8.2.0", # 重试机制
     "orjson>=3.9.0", # 高性能JSON
     "email-validator>=2.2.0",
+    "openai>=1.84.0",
 ]
 
 # 开发依赖（可选）

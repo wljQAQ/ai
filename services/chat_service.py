@@ -18,14 +18,16 @@ from models.schemas.chat import (
     MessageRole
 )
 
+from core.model_providers.openai_provider import OpenAIProvider
 
-class ChatService(BaseService):
+
+class ChatService(BaseService, OpenAIProvider):
     """聊天服务 - 统一Flask和FastAPI实现"""
-    
+
     def __init__(self, session_service=None, redis: Optional[Any] = None, db: Optional[Any] = None):
         super().__init__(db, redis)
         self.session_service = session_service
-    
+
     async def send_message(
         self,
         session_id: str,
@@ -42,13 +44,15 @@ class ChatService(BaseService):
                 {"session_id": session_id, "user_id": user_id, "message": message},
                 ["session_id", "user_id", "message"]
             )
-            
+
             # 清理输入
             message = self.sanitize_input(message)
-            
+
+            self.chat()
+
             # 模拟AI响应
             response_content = f"这是对消息 '{message}' 的AI回复。"
-            
+
             # 创建响应对象
             response = ChatResponse(
                 id=str(uuid.uuid4()),
@@ -60,19 +64,20 @@ class ChatService(BaseService):
                 created_at=datetime.now(),
                 prompt_tokens=len(message.split()),
                 completion_tokens=len(response_content.split()),
-                total_tokens=len(message.split()) + len(response_content.split()),
+                total_tokens=len(message.split()) +
+                len(response_content.split()),
                 finish_reason="stop"
             )
-            
+
             # 缓存响应
             await self.set_cache(f"chat_response:{response.id}", response.model_dump_json())
-            
+
             return response
-            
+
         except Exception as e:
             self.logger.error(f"Chat service error: {str(e)}")
             raise Exception(f"聊天服务错误: {str(e)}")
-    
+
     async def send_message_stream(
         self,
         session_id: str,
@@ -88,14 +93,15 @@ class ChatService(BaseService):
                 {"session_id": session_id, "user_id": user_id, "message": message},
                 ["session_id", "user_id", "message"]
             )
-            
+
             # 清理输入
             message = self.sanitize_input(message)
-            
+
             # 模拟流式响应
-            response_parts = ["这是", "对消息", f"'{message}'", "的", "AI", "流式", "回复。"]
+            response_parts = ["这是", "对消息",
+                              f"'{message}'", "的", "AI", "流式", "回复。"]
             message_id = str(uuid.uuid4())
-            
+
             for i, part in enumerate(response_parts):
                 response = StreamChatResponse(
                     id=message_id,
@@ -104,24 +110,25 @@ class ChatService(BaseService):
                     model="gpt-3.5-turbo",
                     provider=AIProvider.OPENAI,
                     created_at=datetime.now(),
-                    finish_reason="stop" if i == len(response_parts) - 1 else None
+                    finish_reason="stop" if i == len(
+                        response_parts) - 1 else None
                 )
                 yield response
-                
+
                 # 模拟延迟
                 import asyncio
                 await asyncio.sleep(0.1)
-                
+
         except Exception as e:
             self.logger.error(f"Stream chat service error: {str(e)}")
             raise Exception(f"流式聊天服务错误: {str(e)}")
-    
+
     async def regenerate_response(self, session_id: str, user_id: str, message_id: Optional[str] = None) -> ChatResponse:
         """重新生成回复"""
         try:
             # 模拟重新生成
             response_content = "这是重新生成的AI回复。"
-            
+
             response = ChatResponse(
                 id=str(uuid.uuid4()),
                 session_id=session_id,
@@ -135,13 +142,13 @@ class ChatService(BaseService):
                 total_tokens=10 + len(response_content.split()),
                 finish_reason="stop"
             )
-            
+
             return response
-            
+
         except Exception as e:
             self.logger.error(f"Regenerate response error: {str(e)}")
             raise Exception(f"重新生成回复错误: {str(e)}")
-    
+
     async def get_available_providers(self) -> List[ProviderInfo]:
         """获取可用的AI提供商"""
         return [
@@ -170,7 +177,7 @@ class ChatService(BaseService):
                 default_model="claude-3-haiku"
             )
         ]
-    
+
     async def get_provider_models(self, provider_name: str) -> List[ModelInfo]:
         """获取指定提供商的模型列表"""
         models_map = {
@@ -221,9 +228,9 @@ class ChatService(BaseService):
                 )
             ]
         }
-        
+
         return models_map.get(provider_name.lower(), [])
-    
+
     async def get_chat_statistics(self) -> ChatStatistics:
         """获取聊天统计信息"""
         return ChatStatistics(
@@ -255,7 +262,9 @@ class ChatService(BaseService):
                 }
             },
             daily_stats=[
-                {"date": "2024-01-01", "messages": 100, "tokens": 5000, "cost": 2.50},
-                {"date": "2024-01-02", "messages": 120, "tokens": 6000, "cost": 3.00}
+                {"date": "2024-01-01", "messages": 100,
+                    "tokens": 5000, "cost": 2.50},
+                {"date": "2024-01-02", "messages": 120,
+                    "tokens": 6000, "cost": 3.00}
             ]
         )

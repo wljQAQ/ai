@@ -6,11 +6,14 @@ from .base_provider import (
     provider_registry
 )
 
-from .openai_provider import OpenAIProvider
+# 导入具体的提供商实现（这会自动注册它们）
+from .openai_provider_new import OpenAIProvider
+from .claude_provider import ClaudeProvider
 
 __all__ = [
     'BaseModelProvider',
     'ProviderRegistry',
     'provider_registry',
-    'OpenAIProvider'
+    'OpenAIProvider',
+    'ClaudeProvider'
 ]
