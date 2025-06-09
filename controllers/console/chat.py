@@ -1,273 +1,227 @@
 """
-控制台聊天控制器 - 管理后台聊天功能
+控制台聊天控制器 - FastAPI实现
 """
 
 import logging
-from flask import Blueprint, Response, current_app, g
-from controllers.base_controller import BaseController
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+from typing import List
+
 from services.chat_service import ChatService
-from services.session_service import SessionService
-from core.middleware import (
-    require_auth,
-    validate_json,
-    rate_limit,
-    handle_errors,
+from services.auth_service import AuthService
+from models.schemas.base import BaseResponse
+from models.schemas.chat import (
+    ChatRequest, ChatResponse, RegenerateRequest,
+    ProviderInfo, ModelInfo, ChatStatistics
 )
+from models.schemas.user import UserResponse
 
+# 创建FastAPI路由器
+router = APIRouter(prefix="/chat", tags=["Console Chat"])
 
-class ConsoleChatController(BaseController):
-    """控制台聊天控制器"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-    
-    async def send_message(self):
-        """发送聊天消息"""
-        try:
-            # 获取并验证请求数据
-            data = self.get_json_data(required_fields=["session_id", "message"])
-            user_id = self.get_user_id()
-            
-            session_id = data["session_id"]
-            message_content = data["message"]
-            stream = data.get("stream", False)
-            
-            # 获取服务实例
-            chat_service = self._get_chat_service()
-            
-            if stream:
-                # 流式响应
-                return Response(
-                    self._stream_chat_response(
-                        chat_service, session_id, user_id, message_content
-                    ),
-                    mimetype="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                        "X-Accel-Buffering": "no",
-                    },
-                )
-            else:
-                # 同步响应
-                response = await chat_service.send_message(
-                    session_id=session_id,
-                    user_id=user_id,
-                    message=message_content,
-                    stream=False,
-                )
-                
-                return self.create_response(
-                    data=response.to_dict(), 
-                    message="Message sent successfully"
-                )
-        
-        except ValueError as e:
-            return self.create_error_response(str(e), status_code=400)
-        except Exception as e:
-            self.logger.error(f"Console chat error: {str(e)}")
-            return self.create_error_response(
-                "Failed to send message", 
-                status_code=500
-            )
-    
-    async def send_message_stream(self):
-        """发送流式聊天消息"""
-        try:
-            data = self.get_json_data(required_fields=["session_id", "message"])
-            user_id = self.get_user_id()
-            
-            session_id = data["session_id"]
-            message_content = data["message"]
-            
-            chat_service = self._get_chat_service()
-            
-            return Response(
-                self._stream_chat_response(chat_service, session_id, user_id, message_content),
-                mimetype="text/event-stream",
+# 依赖注入函数
+def get_chat_service() -> ChatService:
+    """获取聊天服务实例"""
+    return ChatService()
+
+def get_auth_service() -> AuthService:
+    """获取认证服务实例"""
+    return AuthService()
+
+def get_current_user_id() -> str:
+    """获取当前用户ID（模拟）"""
+    return "user_123"
+
+def get_admin_user() -> UserResponse:
+    """获取管理员用户（模拟）"""
+    from datetime import datetime
+    from models.schemas.user import UserRole, UserStatus
+    return UserResponse(
+        id="admin_123",
+        username="admin",
+        email="admin@example.com",
+        full_name="系统管理员",
+        role=UserRole.ADMIN,
+        status=UserStatus.ACTIVE,
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
+
+# FastAPI路由定义
+@router.post("/test", response_model=BaseResponse[dict])
+async def test_chat_endpoint(
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """测试聊天端点"""
+    return BaseResponse(
+        data={
+            "message": "控制台聊天系统测试成功",
+            "user_id": current_user_id,
+            "endpoint": "console/chat/test",
+            "framework": "FastAPI",
+            "version": "2.0.0"
+        },
+        message="测试成功"
+    )
+
+@router.post("/messages", response_model=BaseResponse[ChatResponse])
+async def send_message(
+    request: ChatRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """发送聊天消息"""
+    try:
+        if request.stream:
+            # 流式响应
+            return StreamingResponse(
+                chat_service.send_message_stream(
+                    session_id=request.session_id,
+                    user_id=current_user_id,
+                    message=request.message,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens
+                ),
+                media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
+                    "X-Accel-Buffering": "no"
+                }
             )
-        
-        except Exception as e:
-            self.logger.error(f"Console stream chat error: {str(e)}")
-            return self.create_error_response(
-                "Failed to start stream", 
-                status_code=500
+        else:
+            # 同步响应
+            response = await chat_service.send_message(
+                session_id=request.session_id,
+                user_id=current_user_id,
+                message=request.message,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
             )
-    
-    async def regenerate_response(self):
-        """重新生成回复"""
-        try:
-            data = self.get_json_data(required_fields=["session_id"])
-            user_id = self.get_user_id()
-            session_id = data["session_id"]
-            
-            chat_service = self._get_chat_service()
-            
-            response = await chat_service.regenerate_response(
-                session_id=session_id, user_id=user_id
+
+            return BaseResponse(
+                data=response,
+                message="消息发送成功"
             )
-            
-            return self.create_response(
-                data=response.to_dict(), 
-                message="Response regenerated successfully"
-            )
-        
-        except ValueError as e:
-            return self.create_error_response(str(e), status_code=400)
-        except Exception as e:
-            self.logger.error(f"Console regenerate error: {str(e)}")
-            return self.create_error_response(
-                "Failed to regenerate response", 
-                status_code=500
-            )
-    
-    async def get_providers(self):
-        """获取可用的AI提供商"""
-        try:
-            chat_service = self._get_chat_service()
-            providers = await chat_service.get_available_providers()
-            
-            return self.create_response(
-                data={"providers": providers}, 
-                message="Providers retrieved successfully"
-            )
-        
-        except Exception as e:
-            self.logger.error(f"Console get providers error: {str(e)}")
-            return self.create_error_response(
-                "Failed to get providers", 
-                status_code=500
-            )
-    
-    async def get_provider_models(self, provider_name: str):
-        """获取提供商支持的模型"""
-        try:
-            chat_service = self._get_chat_service()
-            models = await chat_service.get_provider_models(provider_name)
-            
-            return self.create_response(
-                data={"models": models}, 
-                message="Models retrieved successfully"
-            )
-        
-        except ValueError as e:
-            return self.create_error_response(str(e), status_code=400)
-        except Exception as e:
-            self.logger.error(f"Console get models error: {str(e)}")
-            return self.create_error_response(
-                "Failed to get models", 
-                status_code=500
-            )
-    
-    def test(self):
-        """测试端点"""
-        return self.create_response(
-            data={"message": "Console chat controller test endpoint working"},
-            message="Test successful"
+    except Exception as e:
+        logging.error(f"Console chat error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"发送消息失败: {str(e)}"
         )
-    
-    async def _stream_chat_response(self, chat_service, session_id, user_id, message_content):
-        """生成流式聊天响应"""
-        try:
-            async for response in chat_service.send_message_stream(
-                session_id=session_id, user_id=user_id, message=message_content
-            ):
-                yield f"data: {response.to_dict()}\n\n"
-            
-            yield "data: [DONE]\n\n"
-        
-        except Exception as e:
-            self.logger.error(f"Console stream error: {str(e)}")
-            error_response = {
-                "success": False,
-                "message": str(e),
-                "error_code": "STREAM_ERROR",
+
+@router.post("/messages/stream")
+async def send_message_stream(
+    request: ChatRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """发送流式聊天消息"""
+    try:
+        return StreamingResponse(
+            chat_service.send_message_stream(
+                session_id=request.session_id,
+                user_id=current_user_id,
+                message=request.message,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
             }
-            yield f"data: {error_response}\n\n"
-    
-    def _get_chat_service(self) -> ChatService:
-        """获取聊天服务实例"""
-        try:
-            from repositories.session_repository import SessionRepository
-            from repositories.message_repository import MessageRepository
-            from core.extensions import cache_manager, db_manager
-            
-            session_repo = SessionRepository(db_manager)
-            message_repo = MessageRepository(db_manager)
-            session_service = SessionService(session_repo, message_repo, cache_manager)
-            
-            return ChatService(
-                session_service=session_service,
-                adapter_factory=current_app.adapter_factory,
-                cache_service=cache_manager,
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to create chat service: {str(e)}")
-            # 简化版本，直接创建服务
-            session_service = SessionService()
-            return ChatService(session_service=session_service)
+        )
+    except Exception as e:
+        logging.error(f"Console stream chat error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"流式聊天失败: {str(e)}"
+        )
 
+@router.post("/messages/regenerate", response_model=BaseResponse[ChatResponse])
+async def regenerate_response(
+    request: RegenerateRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """重新生成回复"""
+    try:
+        response = await chat_service.regenerate_response(
+            session_id=request.session_id,
+            user_id=current_user_id,
+            message_id=request.message_id
+        )
 
-# 创建蓝图和控制器实例
-chat_bp = Blueprint("chat", __name__, url_prefix="/chat")
-console_chat_controller = ConsoleChatController()
+        return BaseResponse(
+            data=response,
+            message="回复重新生成成功"
+        )
+    except Exception as e:
+        logging.error(f"Console regenerate error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"重新生成回复失败: {str(e)}"
+        )
 
+@router.get("/providers", response_model=BaseResponse[List[ProviderInfo]])
+async def get_providers(
+    _: UserResponse = Depends(get_admin_user),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """获取可用的AI提供商"""
+    try:
+        providers = await chat_service.get_available_providers()
 
-# 注册路由
-@chat_bp.route("/test", methods=["POST"])
-@handle_errors
-@require_auth
-def test():
-    """测试路由"""
-    return console_chat_controller.test()
+        return BaseResponse(
+            data=providers,
+            message="提供商列表获取成功"
+        )
+    except Exception as e:
+        logging.error(f"Console get providers error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取提供商列表失败: {str(e)}"
+        )
 
+@router.get("/providers/{provider_name}/models", response_model=BaseResponse[List[ModelInfo]])
+async def get_provider_models(
+    provider_name: str,
+    _: UserResponse = Depends(get_admin_user),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """获取指定提供商的模型列表"""
+    try:
+        models = await chat_service.get_provider_models(provider_name)
 
-@chat_bp.route("/messages", methods=["POST"])
-@handle_errors
-@require_auth
-@rate_limit(limit=60, window=60, per="user")
-@validate_json(required_fields=["session_id", "message"])
-async def send_message():
-    """发送消息路由"""
-    return await console_chat_controller.send_message()
+        return BaseResponse(
+            data=models,
+            message=f"提供商 {provider_name} 的模型列表获取成功"
+        )
+    except Exception as e:
+        logging.error(f"Console get models error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取模型列表失败: {str(e)}"
+        )
 
+@router.get("/statistics", response_model=BaseResponse[ChatStatistics])
+async def get_chat_statistics(
+    _: UserResponse = Depends(get_admin_user),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """获取聊天统计信息"""
+    try:
+        statistics = await chat_service.get_chat_statistics()
 
-@chat_bp.route("/messages/stream", methods=["POST"])
-@handle_errors
-@require_auth
-@rate_limit(limit=30, window=60, per="user")
-@validate_json(required_fields=["session_id", "message"])
-async def send_message_stream():
-    """流式发送消息路由"""
-    return await console_chat_controller.send_message_stream()
-
-
-@chat_bp.route("/messages/regenerate", methods=["POST"])
-@handle_errors
-@require_auth
-@rate_limit(limit=30, window=60, per="user")
-@validate_json(required_fields=["session_id"])
-async def regenerate_response():
-    """重新生成回复路由"""
-    return await console_chat_controller.regenerate_response()
-
-
-@chat_bp.route("/providers", methods=["GET"])
-@handle_errors
-@require_auth
-async def get_providers():
-    """获取提供商路由"""
-    return await console_chat_controller.get_providers()
-
-
-@chat_bp.route("/providers/<provider_name>/models", methods=["GET"])
-@handle_errors
-@require_auth
-async def get_provider_models(provider_name: str):
-    """获取提供商模型路由"""
-    return await console_chat_controller.get_provider_models(provider_name)
+        return BaseResponse(
+            data=statistics,
+            message="聊天统计信息获取成功"
+        )
+    except Exception as e:
+        logging.error(f"Console get statistics error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取统计信息失败: {str(e)}"
+        )

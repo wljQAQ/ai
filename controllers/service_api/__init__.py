@@ -1,30 +1,25 @@
 """
-服务API模块 - 第三方集成接口
+服务API模块 - FastAPI路由器
 """
 
-from flask import Flask, Blueprint
-from controllers.service_api.chat import chat_bp
+from fastapi import APIRouter
+from .chat import router as chat_router
 
+# 创建服务API主路由器
+service_api_router = APIRouter(prefix="/api/service", tags=["Service API"])
 
-def init_service_api_routes(app: Flask) -> None:
-    """初始化服务API路由"""
-    
-    # 创建服务API主蓝图
-    service_api_bp = Blueprint("service_api", __name__, url_prefix="/api/service")
-    
-    # 注册子模块蓝图
-    service_api_bp.register_blueprint(chat_bp)
-    
-    # 添加健康检查
-    @service_api_bp.route("/health", methods=["GET"])
-    def health_check():
-        return {
-            "status": "healthy", 
-            "message": "Service API is running", 
-            "success": True
-        }, 200
-    
-    # 注册到应用
-    app.register_blueprint(service_api_bp)
-    
-    app.logger.info("Service API routes initialized")
+# 包含子路由器
+service_api_router.include_router(chat_router)
+
+# 健康检查路由
+@service_api_router.get("/health")
+async def health_check():
+    """服务API健康检查"""
+    return {
+        "status": "healthy",
+        "message": "Service API is running",
+        "success": True
+    }
+
+# 导出路由器
+__all__ = ["service_api_router"]

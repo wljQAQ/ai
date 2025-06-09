@@ -6,6 +6,15 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, validator
 from .chat import AIProvider
+from enum import Enum
+
+
+class SessionStatus(str, Enum):
+    """会话状态枚举"""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ARCHIVED = "archived"
+    DELETED = "deleted"
 
 
 class SessionConfig(BaseModel):
@@ -22,7 +31,7 @@ class SessionConfig(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
 
 
-class CreateSessionRequest(BaseModel):
+class SessionCreate(BaseModel):
     """创建会话请求"""
     title: Optional[str] = Field(default=None, max_length=100, description="会话标题")
     ai_provider: AIProvider = Field(default=AIProvider.OPENAI, description="AI提供商")
@@ -39,11 +48,12 @@ class CreateSessionRequest(BaseModel):
         return v.strip() if v else None
 
 
-class UpdateSessionRequest(BaseModel):
+class SessionUpdate(BaseModel):
     """更新会话请求"""
     title: Optional[str] = Field(default=None, max_length=100, description="会话标题")
     config: Optional[SessionConfig] = Field(default=None, description="会话配置")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="元数据")
+    status: Optional[SessionStatus] = Field(default=None, description="会话状态")
     
     @validator('title')
     def validate_title(cls, v):
@@ -58,6 +68,7 @@ class SessionResponse(BaseModel):
     title: str = Field(description="会话标题")
     user_id: str = Field(description="用户ID")
     config: SessionConfig = Field(description="会话配置")
+    status: SessionStatus = Field(description="会话状态")
     created_at: datetime = Field(description="创建时间")
     updated_at: datetime = Field(description="更新时间")
     message_count: int = Field(default=0, description="消息数量")
@@ -71,11 +82,21 @@ class SessionSummary(BaseModel):
     title: str = Field(description="会话标题")
     ai_provider: AIProvider = Field(description="AI提供商")
     model: str = Field(description="模型名称")
+    status: SessionStatus = Field(description="会话状态")
     created_at: datetime = Field(description="创建时间")
     updated_at: datetime = Field(description="更新时间")
     message_count: int = Field(default=0, description="消息数量")
     last_message_at: Optional[datetime] = Field(default=None, description="最后消息时间")
     last_message_preview: Optional[str] = Field(default=None, max_length=100, description="最后消息预览")
+
+
+class SessionListResponse(BaseModel):
+    """会话列表响应"""
+    sessions: List[SessionSummary] = Field(description="会话列表")
+    total: int = Field(description="总数量")
+    page: int = Field(description="当前页码")
+    size: int = Field(description="每页大小")
+    pages: int = Field(description="总页数")
 
 
 class SessionListRequest(BaseModel):
@@ -84,9 +105,10 @@ class SessionListRequest(BaseModel):
     size: int = Field(default=20, ge=1, le=100, description="每页大小")
     search: Optional[str] = Field(default=None, max_length=100, description="搜索关键词")
     ai_provider: Optional[AIProvider] = Field(default=None, description="筛选AI提供商")
+    status: Optional[SessionStatus] = Field(default=None, description="筛选会话状态")
     is_active: Optional[bool] = Field(default=None, description="筛选激活状态")
     sort_by: str = Field(default="updated_at", description="排序字段")
-    sort_order: str = Field(default="desc", regex="^(asc|desc)$", description="排序方向")
+    sort_order: str = Field(default="desc", pattern="^(asc|desc)$", description="排序方向")
 
 
 class SessionStatistics(BaseModel):
@@ -127,6 +149,6 @@ class SessionMessagesRequest(BaseModel):
 class ExportSessionRequest(BaseModel):
     """导出会话请求"""
     session_ids: List[str] = Field(description="会话ID列表", min_items=1, max_items=100)
-    format: str = Field(default="json", regex="^(json|csv|markdown)$", description="导出格式")
+    format: str = Field(default="json", pattern="^(json|csv|markdown)$", description="导出格式")
     include_metadata: bool = Field(default=False, description="是否包含元数据")
     include_statistics: bool = Field(default=False, description="是否包含统计信息")

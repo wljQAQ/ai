@@ -6,6 +6,15 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, validator
 from .chat import AIProvider
+from enum import Enum
+
+
+class WorkspaceStatus(str, Enum):
+    """工作空间状态枚举"""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    SUSPENDED = "suspended"
+    DELETED = "deleted"
 
 
 class WorkspaceSettings(BaseModel):
@@ -45,12 +54,28 @@ class AIProviderConfig(BaseModel):
         return v.strip()
 
 
-class WorkspaceInfo(BaseModel):
-    """工作空间信息"""
+class WorkspaceCreate(BaseModel):
+    """创建工作空间请求"""
+    name: str = Field(description="工作空间名称", min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500, description="工作空间描述")
+    settings: Optional[WorkspaceSettings] = Field(default=None, description="工作空间设置")
+
+
+class WorkspaceUpdate(BaseModel):
+    """更新工作空间请求"""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100, description="工作空间名称")
+    description: Optional[str] = Field(default=None, max_length=500, description="工作空间描述")
+    settings: Optional[WorkspaceSettings] = Field(default=None, description="工作空间设置")
+    status: Optional[WorkspaceStatus] = Field(default=None, description="工作空间状态")
+
+
+class WorkspaceResponse(BaseModel):
+    """工作空间响应"""
     id: str = Field(description="工作空间ID")
     name: str = Field(description="工作空间名称")
     description: Optional[str] = Field(default=None, description="工作空间描述")
     owner_id: str = Field(description="所有者ID")
+    status: WorkspaceStatus = Field(description="工作空间状态")
     created_at: datetime = Field(description="创建时间")
     updated_at: datetime = Field(description="更新时间")
     settings: WorkspaceSettings = Field(description="工作空间设置")
@@ -60,11 +85,13 @@ class WorkspaceInfo(BaseModel):
     is_active: bool = Field(default=True, description="是否激活")
 
 
-class UpdateWorkspaceRequest(BaseModel):
-    """更新工作空间请求"""
-    name: Optional[str] = Field(default=None, min_length=1, max_length=100, description="工作空间名称")
-    description: Optional[str] = Field(default=None, max_length=500, description="工作空间描述")
-    settings: Optional[WorkspaceSettings] = Field(default=None, description="工作空间设置")
+class WorkspaceListResponse(BaseModel):
+    """工作空间列表响应"""
+    workspaces: List[WorkspaceResponse] = Field(description="工作空间列表")
+    total: int = Field(description="总数量")
+    page: int = Field(description="当前页码")
+    size: int = Field(description="每页大小")
+    pages: int = Field(description="总页数")
 
 
 class WorkspaceStatistics(BaseModel):
@@ -149,7 +176,7 @@ class WorkspaceBackup(BaseModel):
 
 class CreateBackupRequest(BaseModel):
     """创建备份请求"""
-    backup_type: str = Field(default="full", regex="^(full|incremental)$", description="备份类型")
+    backup_type: str = Field(default="full", pattern="^(full|incremental)$", description="备份类型")
     include_messages: bool = Field(default=True, description="包含消息")
     include_sessions: bool = Field(default=True, description="包含会话")
     include_users: bool = Field(default=False, description="包含用户")

@@ -1,18 +1,24 @@
 """
-FastAPI AI聊天系统启动文件
+统一AI聊天系统启动文件 - 支持Flask和FastAPI双模式
 """
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# 创建简化的FastAPI应用
+# 导入统一的schemas
+from models.schemas.base import BaseResponse, HealthCheck, HealthStatus
+
+# 导入控制器统一初始化
+from controllers import init_all_routes
+
+# 创建FastAPI应用
 app = FastAPI(
     title="AI Chat System",
     version="2.0.0",
-    description="统一AI聊天系统 - FastAPI版本",
+    description="统一AI聊天系统 - MVC架构重构版",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # 添加CORS中间件
@@ -24,44 +30,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 基础路由
-@app.get("/")
-async def root():
-    """根路径"""
-    return {
-        "message": "FastAPI AI Chat System",
-        "version": "2.0.0",
-        "status": "running"
-    }
+# 初始化所有控制器路由器
+init_all_routes(app)
 
-@app.get("/health")
-async def health():
-    """健康检查"""
-    return {
-        "status": "healthy",
-        "version": "2.0.0",
-        "service": "ai-chat-system"
-    }
 
-# 简单的聊天测试端点
-@app.post("/api/v1/console/chat/test")
-async def test_chat():
-    """测试聊天端点"""
-    return {
-        "success": True,
-        "message": "FastAPI聊天系统测试成功",
-        "data": {
-            "endpoint": "console/chat/test",
-            "framework": "FastAPI",
-            "version": "2.0.0"
-        }
-    }
+# 注意：聊天相关路由已迁移到 controllers/console/chat.py
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True, log_level="info")

@@ -72,7 +72,7 @@ class UserResponse(BaseModel):
     statistics: Optional[Dict[str, Any]] = Field(default=None, description="用户统计信息")
 
 
-class UserLogin(BaseModel):
+class UserLoginRequest(BaseModel):
     """用户登录请求"""
     username: str = Field(description="用户名或邮箱")
     password: str = Field(description="密码")

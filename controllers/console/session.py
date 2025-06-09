@@ -1,264 +1,201 @@
 """
-控制台会话控制器 - 管理后台会话管理功能
+控制台会话控制器 - FastAPI实现
 """
 
 import logging
-from flask import Blueprint
-from controllers.base_controller import BaseController
+from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List
+
 from services.session_service import SessionService
-from models.session_model import SessionConfig
-from core.middleware import (
-    require_auth,
-    validate_json,
-    rate_limit,
-    handle_errors,
+from services.auth_service import AuthService
+from models.schemas.base import BaseResponse
+from models.schemas.session import (
+    SessionCreate, SessionUpdate, SessionResponse,
+    SessionListResponse, SessionStatistics
 )
+from models.schemas.user import UserResponse
+
+# 创建FastAPI路由器
+router = APIRouter(prefix="/sessions", tags=["Console Sessions"])
+
+# 依赖注入函数
+def get_session_service() -> SessionService:
+    """获取会话服务实例"""
+    return SessionService()
+
+def get_auth_service() -> AuthService:
+    """获取认证服务实例"""
+    return AuthService()
+
+def get_current_user_id() -> str:
+    """获取当前用户ID（模拟）"""
+    return "user_123"
+
+def get_admin_user() -> UserResponse:
+    """获取管理员用户（模拟）"""
+    from datetime import datetime
+    from models.schemas.user import UserRole, UserStatus
+    return UserResponse(
+        id="admin_123",
+        username="admin",
+        email="admin@example.com",
+        full_name="系统管理员",
+        role=UserRole.ADMIN,
+        status=UserStatus.ACTIVE,
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
 
 
-class ConsoleSessionController(BaseController):
-    """控制台会话控制器"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-    
-    async def create_session(self):
-        """创建新会话"""
-        try:
-            data = self.get_json_data(required_fields=["ai_provider", "model"])
-            user_id = self.get_user_id()
-            
-            # 创建会话配置
-            config = SessionConfig(
-                ai_provider=data["ai_provider"],
-                model=data["model"],
-                temperature=data.get("temperature", 0.7),
-                max_tokens=data.get("max_tokens"),
-                system_prompt=data.get("system_prompt"),
-                metadata=data.get("metadata", {})
+# FastAPI路由定义
+@router.post("", response_model=BaseResponse[SessionResponse])
+async def create_session(
+    request: SessionCreate,
+    current_user_id: str = Depends(get_current_user_id),
+    session_service: SessionService = Depends(get_session_service)
+):
+    """创建会话"""
+    try:
+        response = await session_service.create_session(current_user_id, request)
+
+        return BaseResponse(
+            data=response,
+            message="会话创建成功"
+        )
+    except Exception as e:
+        logging.error(f"Console create session error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建会话失败: {str(e)}"
+        )
+
+@router.get("", response_model=BaseResponse[SessionListResponse])
+async def list_sessions(
+    page: int = 1,
+    size: int = 20,
+    current_user_id: str = Depends(get_current_user_id),
+    session_service: SessionService = Depends(get_session_service)
+):
+    """获取会话列表"""
+    try:
+        response = await session_service.list_sessions(
+            user_id=current_user_id,
+            page=page,
+            size=size
+        )
+
+        return BaseResponse(
+            data=response,
+            message="会话列表获取成功"
+        )
+    except Exception as e:
+        logging.error(f"Console list sessions error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取会话列表失败: {str(e)}"
+        )
+
+@router.get("/{session_id}", response_model=BaseResponse[SessionResponse])
+async def get_session(
+    session_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    session_service: SessionService = Depends(get_session_service)
+):
+    """获取会话详情"""
+    try:
+        response = await session_service.get_session(session_id, current_user_id)
+        if not response:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="会话不存在"
             )
-            
-            title = data.get("title")
-            
-            session_service = self._get_session_service()
-            session = await session_service.create_session(user_id, config, title)
-            
-            return self.create_response(
-                data=session.to_dict(),
-                message="Session created successfully",
-                status_code=201
+
+        return BaseResponse(
+            data=response,
+            message="会话详情获取成功"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Console get session error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取会话详情失败: {str(e)}"
+        )
+
+@router.put("/{session_id}", response_model=BaseResponse[SessionResponse])
+async def update_session(
+    session_id: str,
+    request: SessionUpdate,
+    current_user_id: str = Depends(get_current_user_id),
+    session_service: SessionService = Depends(get_session_service)
+):
+    """更新会话"""
+    try:
+        response = await session_service.update_session(session_id, current_user_id, request)
+        if not response:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="会话不存在"
             )
-        
-        except ValueError as e:
-            return self.create_error_response(str(e), status_code=400)
-        except Exception as e:
-            self.logger.error(f"Console create session error: {str(e)}")
-            return self.create_error_response(
-                "Failed to create session",
-                status_code=500
+
+        return BaseResponse(
+            data=response,
+            message="会话更新成功"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Console update session error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新会话失败: {str(e)}"
+        )
+
+@router.delete("/{session_id}", response_model=BaseResponse[dict])
+async def delete_session(
+    session_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    session_service: SessionService = Depends(get_session_service)
+):
+    """删除会话"""
+    try:
+        success = await session_service.delete_session(session_id, current_user_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="会话不存在"
             )
-    
-    async def get_session(self, session_id: str):
-        """获取会话详情"""
-        try:
-            user_id = self.get_user_id()
-            session_service = self._get_session_service()
-            
-            session = await session_service.get_session(session_id, user_id)
-            if not session:
-                return self.create_error_response(
-                    "Session not found",
-                    status_code=404
-                )
-            
-            return self.create_response(
-                data=session.to_dict(),
-                message="Session retrieved successfully"
-            )
-        
-        except Exception as e:
-            self.logger.error(f"Console get session error: {str(e)}")
-            return self.create_error_response(
-                "Failed to get session",
-                status_code=500
-            )
-    
-    async def list_sessions(self):
-        """获取会话列表"""
-        try:
-            user_id = self.get_user_id()
-            limit, offset = self.validate_pagination()
-            
-            session_service = self._get_session_service()
-            sessions = await session_service.list_sessions(user_id, limit, offset)
-            
-            sessions_data = [session.to_dict() for session in sessions]
-            
-            return self.create_response(
-                data={
-                    "sessions": sessions_data,
-                    "total": len(sessions_data),
-                    "limit": limit,
-                    "offset": offset
-                },
-                message="Sessions retrieved successfully"
-            )
-        
-        except ValueError as e:
-            return self.create_error_response(str(e), status_code=400)
-        except Exception as e:
-            self.logger.error(f"Console list sessions error: {str(e)}")
-            return self.create_error_response(
-                "Failed to list sessions",
-                status_code=500
-            )
-    
-    async def update_session(self, session_id: str):
-        """更新会话"""
-        try:
-            user_id = self.get_user_id()
-            data = self.get_json_data()
-            
-            session_service = self._get_session_service()
-            success = await session_service.update_session(session_id, user_id, **data)
-            
-            if not success:
-                return self.create_error_response(
-                    "Session not found",
-                    status_code=404
-                )
-            
-            return self.create_response(
-                message="Session updated successfully"
-            )
-        
-        except ValueError as e:
-            return self.create_error_response(str(e), status_code=400)
-        except Exception as e:
-            self.logger.error(f"Console update session error: {str(e)}")
-            return self.create_error_response(
-                "Failed to update session",
-                status_code=500
-            )
-    
-    async def delete_session(self, session_id: str):
-        """删除会话"""
-        try:
-            user_id = self.get_user_id()
-            session_service = self._get_session_service()
-            
-            success = await session_service.delete_session(session_id, user_id)
-            if not success:
-                return self.create_error_response(
-                    "Session not found",
-                    status_code=404
-                )
-            
-            return self.create_response(
-                message="Session deleted successfully"
-            )
-        
-        except Exception as e:
-            self.logger.error(f"Console delete session error: {str(e)}")
-            return self.create_error_response(
-                "Failed to delete session",
-                status_code=500
-            )
-    
-    async def get_session_messages(self, session_id: str):
-        """获取会话消息"""
-        try:
-            user_id = self.get_user_id()
-            limit, offset = self.validate_pagination()
-            
-            session_service = self._get_session_service()
-            
-            # 验证会话权限
-            session = await session_service.get_session(session_id, user_id)
-            if not session:
-                return self.create_error_response(
-                    "Session not found",
-                    status_code=404
-                )
-            
-            messages = await session_service.get_messages(session_id, limit, offset)
-            messages_data = [message.to_dict() for message in messages]
-            
-            return self.create_response(
-                data={
-                    "messages": messages_data,
-                    "total": len(messages_data),
-                    "limit": limit,
-                    "offset": offset
-                },
-                message="Messages retrieved successfully"
-            )
-        
-        except ValueError as e:
-            return self.create_error_response(str(e), status_code=400)
-        except Exception as e:
-            self.logger.error(f"Console get session messages error: {str(e)}")
-            return self.create_error_response(
-                "Failed to get session messages",
-                status_code=500
-            )
-    
-    def _get_session_service(self) -> SessionService:
-        """获取会话服务实例"""
-        # 简化实现：直接创建服务实例
-        # 实际项目中应该使用依赖注入
-        return SessionService()
 
+        return BaseResponse(
+            data={"session_id": session_id},
+            message="会话删除成功"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Console delete session error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除会话失败: {str(e)}"
+        )
 
-# 创建蓝图和控制器实例
-session_bp = Blueprint("session", __name__, url_prefix="/sessions")
-console_session_controller = ConsoleSessionController()
+@router.get("/statistics", response_model=BaseResponse[SessionStatistics])
+async def get_session_statistics(
+    _: UserResponse = Depends(get_admin_user),
+    session_service: SessionService = Depends(get_session_service)
+):
+    """获取会话统计信息"""
+    try:
+        statistics = await session_service.get_session_statistics("user_123")
 
-
-# 注册路由
-@session_bp.route("", methods=["POST"])
-@handle_errors
-@require_auth
-@validate_json(required_fields=["ai_provider", "model"])
-async def create_session():
-    """创建会话路由"""
-    return await console_session_controller.create_session()
-
-
-@session_bp.route("", methods=["GET"])
-@handle_errors
-@require_auth
-async def list_sessions():
-    """获取会话列表路由"""
-    return await console_session_controller.list_sessions()
-
-
-@session_bp.route("/<session_id>", methods=["GET"])
-@handle_errors
-@require_auth
-async def get_session(session_id: str):
-    """获取会话详情路由"""
-    return await console_session_controller.get_session(session_id)
-
-
-@session_bp.route("/<session_id>", methods=["PUT"])
-@handle_errors
-@require_auth
-async def update_session(session_id: str):
-    """更新会话路由"""
-    return await console_session_controller.update_session(session_id)
-
-
-@session_bp.route("/<session_id>", methods=["DELETE"])
-@handle_errors
-@require_auth
-async def delete_session(session_id: str):
-    """删除会话路由"""
-    return await console_session_controller.delete_session(session_id)
-
-
-@session_bp.route("/<session_id>/messages", methods=["GET"])
-@handle_errors
-@require_auth
-async def get_session_messages(session_id: str):
-    """获取会话消息路由"""
-    return await console_session_controller.get_session_messages(session_id)
+        return BaseResponse(
+            data=statistics,
+            message="会话统计信息获取成功"
+        )
+    except Exception as e:
+        logging.error(f"Console get session statistics error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取会话统计信息失败: {str(e)}"
+        )
