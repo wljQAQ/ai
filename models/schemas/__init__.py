@@ -45,17 +45,27 @@ from .workspace import (
     WorkspaceListResponse,
     WorkspaceStatus
 )
+from .ai_provider import (
+    UnifiedChatRequest,
+    UnifiedChatResponse,
+    UnifiedStreamResponse,
+    UnifiedMessage,
+    BaseProviderConfig,
+    OpenAIConfig,
+    ClaudeConfig
+)
+
 
 __all__ = [
     # Base schemas
     "BaseResponse",
-    "ErrorResponse", 
+    "ErrorResponse",
     "PaginationParams",
     "PaginatedResponse",
     "HealthStatus",
     "HealthCheck",
     "APIKeyInfo",
-    
+
     # Chat schemas
     "ChatRequest",
     "ChatResponse",
@@ -66,14 +76,14 @@ __all__ = [
     "ChatStatistics",
     "AIProvider",
     "MessageRole",
-    
+
     # Session schemas
     "SessionCreate",
     "SessionUpdate",
     "SessionResponse",
     "SessionListResponse",
     "SessionStatus",
-    
+
     # User schemas
     "UserCreate",
     "UserUpdate",
@@ -82,11 +92,20 @@ __all__ = [
     "UserLoginResponse",
     "UserRole",
     "UserStatus",
-    
+
     # Workspace schemas
     "WorkspaceCreate",
     "WorkspaceUpdate",
     "WorkspaceResponse",
     "WorkspaceListResponse",
     "WorkspaceStatus",
+
+    # AI Provider schemas
+    "UnifiedChatRequest",
+    "UnifiedChatResponse",
+    "UnifiedStreamResponse",
+    "UnifiedMessage",
+    "BaseProviderConfig",
+    "OpenAIConfig",
+    "ClaudeConfig",
 ]

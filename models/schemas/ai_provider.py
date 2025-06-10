@@ -6,49 +6,14 @@ AI 提供商统一数据模型
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union, Literal
 from pydantic import BaseModel, Field, field_validator
-from enum import Enum
 
-
-class MessageRole(str, Enum):
-    """消息角色枚举"""
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-    FUNCTION = "function"
-
-
-class ProviderType(str, Enum):
-    """AI 提供商类型枚举"""
-    OPENAI = "openai"
-    CLAUDE = "claude"
-    QWEN = "qwen"
-    GEMINI = "gemini"
-    DIFY = "dify"
-
-
-class ModelType(str, Enum):
-    """模型类型枚举"""
-    LLM = "llm"
-    EMBEDDING = "embedding"
-    TTS = "tts"
-    STT = "stt"
-    IMAGE = "image"
+# 导入共享的基础定义
+from .common import MessageRole, ProviderType, TokenUsage, BaseMessage, ModelType
 
 
 # ============= 统一请求模型 =============
-class UnifiedMessage(BaseModel):
-    """统一消息格式"""
-    role: MessageRole = Field(..., description="消息角色")
-    content: str = Field(..., description="消息内容", min_length=1)
-    name: Optional[str] = Field(default=None, description="发送者名称")
-    function_call: Optional[Dict[str, Any]] = Field(default=None, description="函数调用")
-    
-    @field_validator('content')
-    @classmethod
-    def validate_content(cls, v):
-        if not v.strip():
-            raise ValueError('消息内容不能为空')
-        return v.strip()
+# 使用共享的 BaseMessage 作为 UnifiedMessage 的别名
+UnifiedMessage = BaseMessage
 
 
 class UnifiedChatRequest(BaseModel):
@@ -69,13 +34,6 @@ class UnifiedChatRequest(BaseModel):
 
 
 # ============= 统一响应模型 =============
-class TokenUsage(BaseModel):
-    """Token 使用情况"""
-    prompt_tokens: int = Field(..., description="输入token数")
-    completion_tokens: int = Field(..., description="输出token数")
-    total_tokens: int = Field(..., description="总token数")
-
-
 class UnifiedChatResponse(BaseModel):
     """统一聊天响应格式"""
     id: str = Field(..., description="响应ID")
