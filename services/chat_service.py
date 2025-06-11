@@ -108,7 +108,8 @@ class ChatService(BaseService):
             config_data["provider_type"] = provider_type
 
             # 创建提供商实例
-            provider = provider_registry.create_provider(provider_type, config_data)
+            provider = provider_registry.create_provider(
+                provider_type, config_data)
 
             # 缓存实例
             self._providers[provider_name] = provider
@@ -141,7 +142,8 @@ class ChatService(BaseService):
             统一请求对象
         """
         # 创建消息列表
-        messages = [UnifiedMessage(role=CommonMessageRole.USER, content=message)]
+        messages = [UnifiedMessage(
+            role=CommonMessageRole.USER, content=message)]
 
         # 使用默认模型如果未指定
         if not model:
@@ -215,7 +217,8 @@ class ChatService(BaseService):
                 role=MessageRole.ASSISTANT,
                 content=unified_response.content,
                 model=unified_response.model,
-                provider=self._convert_provider_type(unified_response.provider),
+                provider=self._convert_provider_type(
+                    unified_response.provider),
                 created_at=unified_response.created_at,
                 prompt_tokens=unified_response.usage.prompt_tokens,
                 completion_tokens=unified_response.usage.completion_tokens,
@@ -323,7 +326,7 @@ class ChatService(BaseService):
         max_tokens: Optional[int] = None,
         provider_name: Optional[str] = None,
         model: Optional[str] = None,
-    ) -> AsyncGenerator[StreamChatResponse, None]:
+    ) -> AsyncGenerator[str, None]:
         """发送流式聊天消息
 
         Args:
@@ -336,7 +339,7 @@ class ChatService(BaseService):
             model: 指定的模型名称
 
         Yields:
-            流式聊天响应对象
+            SSE格式的字符串数据
         """
         try:
             # 验证输入
@@ -374,13 +377,26 @@ class ChatService(BaseService):
                     created_at=unified_stream_response.created_at,
                     finish_reason=unified_stream_response.finish_reason,
                 )
-                yield response
+
+                # 将响应对象序列化为SSE格式
+                json_data = response.model_dump_json()
+                sse_data = f"data: {json_data}\n\n"
+                yield sse_data
+
+            # 发送结束标记
+            yield "data: [DONE]\n\n"
 
             self.logger.info(f"流式聊天消息发送成功，提供商: {provider_name}")
 
         except Exception as e:
             self.logger.error(f"Stream chat service error: {str(e)}")
-            raise Exception(f"流式聊天服务错误: {str(e)}")
+            # 发送错误信息
+            error_response = {
+                "error": True,
+                "message": f"流式聊天服务错误: {str(e)}",
+                "session_id": session_id
+            }
+            yield f"data: {json.dumps(error_response)}\n\n"
 
     async def regenerate_response(
         self, session_id: str, user_id: str, message_id: Optional[str] = None
@@ -507,7 +523,9 @@ class ChatService(BaseService):
                 "gpt-4": {"requests": 200, "tokens": 10000, "cost": 5.00},
             },
             daily_stats=[
-                {"date": "2024-01-01", "messages": 100, "tokens": 5000, "cost": 2.50},
-                {"date": "2024-01-02", "messages": 120, "tokens": 6000, "cost": 3.00},
+                {"date": "2024-01-01", "messages": 100,
+                    "tokens": 5000, "cost": 2.50},
+                {"date": "2024-01-02", "messages": 120,
+                    "tokens": 6000, "cost": 3.00},
             ],
         )

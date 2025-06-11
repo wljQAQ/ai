@@ -49,8 +49,6 @@ class OpenAIProvider(BaseModelProvider):
             raise ValueError("OpenAI API key is required")
 
     def _initialize_client(self) -> None:
-        print(f"self.openai_config.base_url: {self.openai_config.base_url}")
-
         """初始化 OpenAI 客户端"""
         self.client = AsyncOpenAI(
             api_key=self.openai_config.api_key,
