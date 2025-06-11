@@ -27,7 +27,7 @@ class UnifiedChatRequest(BaseModel):
     )
     stream: bool = Field(default=False, description="是否流式响应")
     top_p: Optional[float] = Field(
-        default=None, g=0.0, le=1.0, description="核采样参数"
+        default=None, ge=0.0, le=1.0, description="核采样参数"
     )
     frequency_penalty: Optional[float] = Field(
         default=None, ge=-2.0, le=2.0, description="频率惩罚"
@@ -153,6 +153,49 @@ class ClaudeConfig(BaseProviderConfig):
     def validate_api_key(cls, v):
         if not v.startswith("sk-ant-"):
             raise ValueError('Claude API key must start with "sk-ant-"')
+        return v
+
+
+class DifyConfig(BaseProviderConfig):
+    """Dify 配置模型"""
+
+    provider_type: ProviderType = Field(
+        default=ProviderType.DIFY, description="提供商类型"
+    )
+    base_url: str = Field(
+        default="https://api.dify.ai", description="Dify API 基础URL"
+    )
+    supported_models: List[str] = Field(
+        default=[
+            "gpt-3.5-turbo",
+            "gpt-4",
+            "gpt-4-turbo",
+            "claude-3-haiku",
+            "claude-3-sonnet",
+            "claude-3-opus",
+        ],
+        description="支持的模型列表（取决于 Dify 应用配置）",
+    )
+    default_model: str = Field(
+        default="gpt-3.5-turbo", description="默认模型"
+    )
+
+    # Dify 特有配置
+    app_id: Optional[str] = Field(
+        default=None, description="Dify 应用ID（可选，用于多应用场景）"
+    )
+    conversation_id: Optional[str] = Field(
+        default=None, description="对话ID（用于维持对话状态）"
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, v):
+        if not v or len(v.strip()) == 0:
+            raise ValueError("Dify API key cannot be empty")
+        # Dify API key 通常是较长的字符串，不像 OpenAI 有固定前缀
+        if len(v) < 10:
+            raise ValueError("Dify API key seems too short")
         return v
 
 
