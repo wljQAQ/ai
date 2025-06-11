@@ -164,7 +164,7 @@ class BaseModelProvider(ABC):
                     continue
                 else:
                     break
-
+    
         # 所有重试都失败了
         self.logger.error(f"All {self.config.max_retries + 1} attempts failed")
         raise ProviderError(

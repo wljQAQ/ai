@@ -1,9 +1,10 @@
 """
 OpenAI模型提供商实现
 """
+
 from typing import Dict, List, AsyncGenerator, Any, Optional
 import uuid
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
 from .base_provider import BaseModelProvider, provider_registry
@@ -15,7 +16,7 @@ from models.schemas.ai_provider import (
     UnifiedMessage,
     TokenUsage,
     ProviderType,
-    MessageRole
+    MessageRole,
 )
 
 
@@ -48,15 +49,19 @@ class OpenAIProvider(BaseModelProvider):
             raise ValueError("OpenAI API key is required")
 
     def _initialize_client(self) -> None:
+        print(f"self.openai_config.base_url: {self.openai_config.base_url}")
+
         """初始化 OpenAI 客户端"""
         self.client = AsyncOpenAI(
             api_key=self.openai_config.api_key,
             base_url=self.openai_config.base_url,
             timeout=self.openai_config.timeout,
-            max_retries=self.openai_config.max_retries
+            max_retries=self.openai_config.max_retries,
         )
 
-    def _convert_to_openai_messages(self, messages: List[UnifiedMessage]) -> List[Dict[str, str]]:
+    def _convert_to_openai_messages(
+        self, messages: List[UnifiedMessage]
+    ) -> List[Dict[str, str]]:
         """将统一消息格式转换为 OpenAI 格式
 
         Args:
@@ -67,10 +72,7 @@ class OpenAIProvider(BaseModelProvider):
         """
         openai_messages = []
         for msg in messages:
-            openai_msg = {
-                "role": msg.role.value,
-                "content": msg.content
-            }
+            openai_msg = {"role": msg.role.value, "content": msg.content}
             if msg.name:
                 openai_msg["name"] = msg.name
             if msg.function_call:
@@ -95,7 +97,7 @@ class OpenAIProvider(BaseModelProvider):
             "model": request.model,
             "messages": openai_messages,
             "temperature": request.temperature,
-            "stream": False
+            "stream": False,
         }
 
         # 添加可选参数
@@ -116,7 +118,9 @@ class OpenAIProvider(BaseModelProvider):
         api_params.update(request.extra_params)
 
         # 调用 OpenAI API
-        response: ChatCompletion = await self.client.chat.completions.create(**api_params)
+        response: ChatCompletion = await self.client.chat.completions.create(
+            **api_params
+        )
 
         # 构造统一响应
         return UnifiedChatResponse(
@@ -127,12 +131,14 @@ class OpenAIProvider(BaseModelProvider):
             usage=TokenUsage(
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
-                total_tokens=response.usage.total_tokens
+                total_tokens=response.usage.total_tokens,
             ),
-            finish_reason=response.choices[0].finish_reason or "stop"
+            finish_reason=response.choices[0].finish_reason or "stop",
         )
 
-    async def _call_stream_api(self, request: UnifiedChatRequest) -> AsyncGenerator[UnifiedStreamResponse, None]:
+    async def _call_stream_api(
+        self, request: UnifiedChatRequest
+    ) -> AsyncGenerator[UnifiedStreamResponse, None]:
         """调用 OpenAI 流式 API
 
         Args:
@@ -149,7 +155,7 @@ class OpenAIProvider(BaseModelProvider):
             "model": request.model,
             "messages": openai_messages,
             "temperature": request.temperature,
-            "stream": True
+            "stream": True,
         }
 
         # 添加可选参数
@@ -181,13 +187,9 @@ class OpenAIProvider(BaseModelProvider):
                     delta=chunk.choices[0].delta.content,
                     model=chunk.model,
                     provider=ProviderType.OPENAI,
-                    finish_reason=chunk.choices[0].finish_reason
+                    finish_reason=chunk.choices[0].finish_reason,
                 )
 
 
 # 注册提供商
-provider_registry.register(
-    ProviderType.OPENAI,
-    OpenAIProvider,
-    OpenAIConfig
-)
+provider_registry.register(ProviderType.OPENAI, OpenAIProvider, OpenAIConfig)

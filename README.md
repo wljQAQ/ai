@@ -174,20 +174,27 @@ Authorization: Bearer <token>
 
 ```bash
 # 应用配置
-FLASK_ENV=development
 SECRET_KEY=your-secret-key
 DEBUG=true
+DEFAULT_AI_PROVIDER=openai
 
 # 数据库配置
-DATABASE_URL=mysql://user:password@localhost:3306/ai_chat
+DB_URL=mysql://user:password@localhost:3306/ai_chat
+DB_POOL_SIZE=10
+DB_MAX_OVERFLOW=20
+
+# Redis配置
 REDIS_URL=redis://localhost:6379/0
+REDIS_MAX_CONNECTIONS=10
 
 # AI提供商配置
 OPENAI_API_KEY=sk-xxx
 OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_DEFAULT_MODEL=gpt-3.5-turbo
 
 QWEN_API_KEY=xxx
 QWEN_BASE_URL=https://dashscope.aliyuncs.com/api/v1
+QWEN_DEFAULT_MODEL=qwen-turbo
 
 DIFY_API_KEY=xxx
 DIFY_BASE_URL=https://api.dify.ai/v1
