@@ -51,6 +51,12 @@ class ChatRequest(BaseModel):
         default=None, gt=1, le=8000, description="最大token数"
     )
 
+    model: Optional[str] = Field(default=None, description="模型名称")
+
+    provider: Optional[AIProvider] = Field(
+        default=AIProvider.OPENAI, description="AI提供商"
+    )
+
     @field_validator("message")
     @classmethod
     def validate_message(cls, v):

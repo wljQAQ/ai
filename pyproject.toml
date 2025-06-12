@@ -23,7 +23,6 @@ dependencies = [
     "aioredis>=2.0.0",
     # HTTP 客户端
     "httpx>=0.25.0",
-    "aiohttp>=3.9.0",
     # 认证和安全
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",

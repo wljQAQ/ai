@@ -46,8 +46,6 @@ class DifyProvider(BaseModelProvider):
 
     def _validate_config(self) -> None:
         """验证配置"""
-        if not self.dify_config.api_key:
-            raise ValueError("Dify API key is required")
         if not self.dify_config.base_url:
             raise ValueError("Dify base URL is required")
 
@@ -56,7 +54,6 @@ class DifyProvider(BaseModelProvider):
         self.client = httpx.AsyncClient(
             base_url=self.dify_config.base_url,
             headers={
-                "Authorization": f"Bearer {self.dify_config.api_key}",
                 "Content-Type": "application/json",
             },
             timeout=self.dify_config.timeout,
@@ -85,7 +82,9 @@ class DifyProvider(BaseModelProvider):
         # 如果没有用户消息，返回最后一条消息的内容
         return messages[-1].content
 
-    def _extract_conversation_context(self, messages: List[UnifiedMessage]) -> Dict[str, Any]:
+    def _extract_conversation_context(
+        self, messages: List[UnifiedMessage]
+    ) -> Dict[str, Any]:
         """提取对话上下文信息
 
         Args:
@@ -95,7 +94,7 @@ class DifyProvider(BaseModelProvider):
             包含上下文信息的字典
         """
         context = {}
-        
+
         # 提取系统消息作为指令
         system_messages = [msg for msg in messages if msg.role == MessageRole.SYSTEM]
         if system_messages:
@@ -105,11 +104,10 @@ class DifyProvider(BaseModelProvider):
         conversation_history = []
         for i, msg in enumerate(messages[:-1]):  # 排除最后一条消息
             if msg.role in [MessageRole.USER, MessageRole.ASSISTANT]:
-                conversation_history.append({
-                    "role": msg.role.value,
-                    "content": msg.content
-                })
-        
+                conversation_history.append(
+                    {"role": msg.role.value, "content": msg.content}
+                )
+
         if conversation_history:
             context["conversation_history"] = conversation_history
 
@@ -143,8 +141,14 @@ class DifyProvider(BaseModelProvider):
         # 添加扩展参数
         api_params.update(request.extra_params)
 
+        print(api_params, "api_params", request.extra_params)
+
         # 调用 Dify API
-        response = await self.client.post("/v1/chat-messages", json=api_params)
+        response = await self.client.post(
+            "/chat-messages",
+            json=api_params,
+            headers={"Authorization": f"Bearer {api_params['api_key']}"},
+        )
         response.raise_for_status()
 
         data = response.json()
@@ -156,9 +160,15 @@ class DifyProvider(BaseModelProvider):
             model=request.model,  # Dify 不返回具体模型信息，使用请求中的模型
             provider=ProviderType.DIFY,
             usage=TokenUsage(
-                prompt_tokens=data.get("metadata", {}).get("usage", {}).get("prompt_tokens", 0),
-                completion_tokens=data.get("metadata", {}).get("usage", {}).get("completion_tokens", 0),
-                total_tokens=data.get("metadata", {}).get("usage", {}).get("total_tokens", 0),
+                prompt_tokens=data.get("metadata", {})
+                .get("usage", {})
+                .get("prompt_tokens", 0),
+                completion_tokens=data.get("metadata", {})
+                .get("usage", {})
+                .get("completion_tokens", 0),
+                total_tokens=data.get("metadata", {})
+                .get("usage", {})
+                .get("total_tokens", 0),
             ),
             finish_reason="stop",  # Dify 通常不提供详细的结束原因
             extra_data={
@@ -201,7 +211,9 @@ class DifyProvider(BaseModelProvider):
         response_id = str(uuid.uuid4())
 
         # 调用 Dify 流式 API
-        async with self.client.stream("POST", "/v1/chat-messages", json=api_params) as response:
+        async with self.client.stream(
+            "POST", "/v1/chat-messages", json=api_params
+        ) as response:
             response.raise_for_status()
 
             async for line in response.aiter_lines():

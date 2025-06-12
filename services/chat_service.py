@@ -108,8 +108,7 @@ class ChatService(BaseService):
             config_data["provider_type"] = provider_type
 
             # 创建提供商实例
-            provider = provider_registry.create_provider(
-                provider_type, config_data)
+            provider = provider_registry.create_provider(provider_type, config_data)
 
             # 缓存实例
             self._providers[provider_name] = provider
@@ -128,6 +127,7 @@ class ChatService(BaseService):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         stream: bool = False,
+        provider_name: Optional[str] = None,
     ) -> UnifiedChatRequest:
         """将聊天参数转换为统一请求格式
 
@@ -142,21 +142,26 @@ class ChatService(BaseService):
             统一请求对象
         """
         # 创建消息列表
-        messages = [UnifiedMessage(
-            role=CommonMessageRole.USER, content=message)]
+        messages = [UnifiedMessage(role=CommonMessageRole.USER, content=message)]
 
         # 使用默认模型如果未指定
         if not model:
             provider = self._get_or_create_provider(self.default_provider)
             model = provider.get_default_model()
 
-        return UnifiedChatRequest(
+        unified_request = UnifiedChatRequest(
             messages=messages,
             model=model,
             temperature=temperature or 0.7,
             max_tokens=max_tokens,
             stream=stream,
         )
+
+        if provider_name == AIProvider.DIFY:
+            # TODO:这边先写死api_key，后续需要从数据库获取
+            unified_request.extra_params["api_key"] = "app-IRZjoMvF4ClZ1Q8cYXSm383d"
+
+        return unified_request
 
     async def send_message(
         self,
@@ -205,6 +210,7 @@ class ChatService(BaseService):
                 temperature=temperature,
                 max_tokens=max_tokens,
                 stream=False,
+                provider_name=provider_name,
             )
 
             # 调用AI提供商
@@ -217,8 +223,7 @@ class ChatService(BaseService):
                 role=MessageRole.ASSISTANT,
                 content=unified_response.content,
                 model=unified_response.model,
-                provider=self._convert_provider_type(
-                    unified_response.provider),
+                provider=self._convert_provider_type(unified_response.provider),
                 created_at=unified_response.created_at,
                 prompt_tokens=unified_response.usage.prompt_tokens,
                 completion_tokens=unified_response.usage.completion_tokens,
@@ -362,6 +367,7 @@ class ChatService(BaseService):
                 temperature=temperature,
                 max_tokens=max_tokens,
                 stream=True,
+                provider_name=provider_name,
             )
 
             # 调用AI提供商流式接口
@@ -394,7 +400,7 @@ class ChatService(BaseService):
             error_response = {
                 "error": True,
                 "message": f"流式聊天服务错误: {str(e)}",
-                "session_id": session_id
+                "session_id": session_id,
             }
             yield f"data: {json.dumps(error_response)}\n\n"
 
@@ -523,9 +529,7 @@ class ChatService(BaseService):
                 "gpt-4": {"requests": 200, "tokens": 10000, "cost": 5.00},
             },
             daily_stats=[
-                {"date": "2024-01-01", "messages": 100,
-                    "tokens": 5000, "cost": 2.50},
-                {"date": "2024-01-02", "messages": 120,
-                    "tokens": 6000, "cost": 3.00},
+                {"date": "2024-01-01", "messages": 100, "tokens": 5000, "cost": 2.50},
+                {"date": "2024-01-02", "messages": 120, "tokens": 6000, "cost": 3.00},
             ],
         )

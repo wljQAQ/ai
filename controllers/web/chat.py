@@ -73,6 +73,7 @@ async def send_message(
                 message=request.message,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
+                provider_name=request.provider,
             )
 
             return BaseResponse(data=response, message="消息发送成功")
