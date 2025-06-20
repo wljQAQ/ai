@@ -380,6 +380,8 @@ class ChatService(BaseService):
                     provider=self._convert_provider_type(
                         unified_stream_response.provider
                     ),
+                    content=unified_stream_response.content,
+                    reasoning=unified_stream_response.reasoning,
                     created_at=unified_stream_response.created_at,
                     finish_reason=unified_stream_response.finish_reason,
                 )

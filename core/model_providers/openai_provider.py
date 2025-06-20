@@ -14,6 +14,8 @@ from models.schemas.ai_provider import (
     UnifiedChatResponse,
     UnifiedStreamResponse,
     UnifiedMessage,
+    UnifiedStreamResponseContent,
+    ContentType,
     TokenUsage,
     ProviderType,
     MessageRole,
@@ -184,6 +186,11 @@ class OpenAIProvider(BaseModelProvider):
                     id=response_id,
                     delta=chunk.choices[0].delta.content,
                     model=chunk.model,
+                    reasoning=chunk.choices[0].message.reasoning,
+                    content=UnifiedStreamResponseContent(
+                        type=ContentType.TEXT,
+                        text=chunk.choices[0].delta.content,
+                    ),
                     provider=ProviderType.OPENAI,
                     finish_reason=chunk.choices[0].finish_reason,
                 )

@@ -8,7 +8,14 @@ from typing import Any, Dict, List, Optional, Union, Literal
 from pydantic import BaseModel, Field, field_validator
 
 # 导入共享的基础定义
-from .common import MessageRole, ProviderType, TokenUsage, BaseMessage, ModelType
+from .common import (
+    MessageRole,
+    ProviderType,
+    TokenUsage,
+    BaseMessage,
+    ModelType,
+    ContentType,
+)
 
 
 # ============= 统一请求模型 =============
@@ -42,6 +49,14 @@ class UnifiedChatRequest(BaseModel):
     extra_params: Dict[str, Any] = Field(default_factory=dict, description="扩展参数")
 
 
+class UnifiedStreamResponseContent(BaseModel):
+    """统一流式响应内容Content格式  目前只支持文本"""
+
+    type: ContentType = Field(default=ContentType.TEXT, description="内容类型")
+    text: Optional[str] = Field(default=None, description="文本内容")
+    reasoning: Optional[str] = Field(default=None, description="推理内容")
+
+
 # ============= 统一响应模型 =============
 class UnifiedChatResponse(BaseModel):
     """统一聊天响应格式"""
@@ -66,6 +81,8 @@ class UnifiedStreamResponse(BaseModel):
 
     id: str = Field(..., description="响应ID")
     delta: str = Field(..., description="增量内容")
+    reasoning: Optional[str] = Field(default=None, description="推理内容")
+    content: UnifiedStreamResponseContent = Field(..., description="内容")
     model: str = Field(..., description="使用的模型")
     provider: ProviderType = Field(..., description="AI提供商")
     finish_reason: Optional[str] = Field(default=None, description="结束原因")
@@ -162,9 +179,7 @@ class DifyConfig(BaseProviderConfig):
     provider_type: ProviderType = Field(
         default=ProviderType.DIFY, description="提供商类型"
     )
-    base_url: str = Field(
-        default="https://api.dify.ai", description="Dify API 基础URL"
-    )
+    base_url: str = Field(default="https://api.dify.ai", description="Dify API 基础URL")
     supported_models: List[str] = Field(
         default=[
             "gpt-3.5-turbo",
@@ -176,9 +191,7 @@ class DifyConfig(BaseProviderConfig):
         ],
         description="支持的模型列表（取决于 Dify 应用配置）",
     )
-    default_model: str = Field(
-        default="gpt-3.5-turbo", description="默认模型"
-    )
+    default_model: str = Field(default="gpt-3.5-turbo", description="默认模型")
 
     # Dify 特有配置
     app_id: Optional[str] = Field(

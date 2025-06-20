@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
+from .ai_provider import UnifiedStreamResponseContent
 
 
 class MessageRole(str, Enum):
@@ -122,6 +123,8 @@ class StreamChatResponse(BaseModel):
     session_id: str = Field(description="会话ID")
     delta: str = Field(description="增量内容")
     model: str = Field(description="使用的模型")
+    reasoning: Optional[str] = Field(default=None, description="推理内容")
+    content: UnifiedStreamResponseContent = Field(description="内容")
     provider: AIProvider = Field(description="AI提供商")
     created_at: datetime = Field(description="创建时间")
     finish_reason: Optional[str] = Field(default=None, description="结束原因")
